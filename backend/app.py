@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 import domain
+from correction_batch import KIND_ALIASES as CORRECTION_KINDS, retry_batch
 from core import CACHE, db, initialize, password_hash, require, token_for
 from scripts.seed_demo import seed_all
 
@@ -94,3 +95,34 @@ def job_receipt(job_id: int, _user=Depends(require())):
     if not row:
         raise HTTPException(404, "没有这条处理记录")
     return row
+
+@app.post("/api/jobs/{job_id}/retry")
+@app.put("/api/jobs/{job_id}/retry")
+def retry_job(job_id: int, _user=Depends(require("operator", "reviewer"))):
+    with db() as connection:
+        row = connection.execute(
+            "SELECT id,kind,status,payload FROM app_jobs WHERE id=%s FOR UPDATE", (job_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "没有这条处理记录")
+
+        payload = row["payload"] or {}
+        batch_ref = payload.get("batch_id") or payload.get("batch_key")
+        if row["kind"] in CORRECTION_KINDS and batch_ref is not None:
+            # The batch service preserves the original payload and publication
+            # idempotency boundary.  It resets this same job row.
+            retry_batch(connection, str(batch_ref))
+        elif row["status"] == "failed":
+            connection.execute(
+                """UPDATE app_jobs
+                      SET status='queued',error=NULL,result=NULL,
+                          available_at=now(),finished_at=NULL
+                    WHERE id=%s""",
+                (job_id,),
+            )
+
+        return connection.execute(
+            """SELECT id,kind,status,result,error,available_at,created_at,finished_at
+                 FROM app_jobs WHERE id=%s""",
+            (job_id,),
+        ).fetchone()

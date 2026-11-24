@@ -8,20 +8,15 @@ from fastapi.encoders import jsonable_encoder
 from psycopg.types.json import Jsonb
 
 import domain
+from correction_batch import KIND_ALIASES as CORRECTION_KINDS, mark_failed
 from core import CACHE, db
 
 HEARTBEAT = Path("/tmp/yangyang-worker-heartbeat")
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("worker")
 
-def process(connection):
-    job = connection.execute("""
-        SELECT id,kind,payload FROM app_jobs
-        WHERE status='queued' AND available_at <= now()
-        ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT 1
-    """).fetchone()
-    if job is None:
-        return False
+
+def handle_job(connection, job):
     try:
         with connection.transaction():
             connection.execute("UPDATE app_jobs SET status='running' WHERE id=%s", (job["id"],))
@@ -31,6 +26,7 @@ def process(connection):
                 (Jsonb(jsonable_encoder(result)), job["id"]),
             )
         log.info("Completed job %s (%s)", job["id"], job["kind"])
+        return "done"
     except Exception as exc:
         log.exception("Job %s failed", job["id"])
         detail = str(exc.detail) if isinstance(exc, HTTPException) else "后台计算失败，请核对输入后重试"
@@ -38,7 +34,37 @@ def process(connection):
             "UPDATE app_jobs SET status='failed',error=%s,finished_at=now() WHERE id=%s",
             (detail, job["id"]),
         )
+        if job["kind"] in CORRECTION_KINDS:
+            try:
+                mark_failed(connection, job.get("payload"), detail)
+            except Exception:
+                log.exception("Could not mark correction batch for job %s", job["id"])
+        return "failed"
+
+
+def process(connection):
+    job = connection.execute("""
+        SELECT id,kind,payload FROM app_jobs
+        WHERE status='queued' AND available_at <= now()
+        ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT 1
+    """).fetchone()
+    if job is None:
+        return False
+    handle_job(connection, job)
     return True
+
+
+def process_job_id(connection, job_id):
+    """Process one exact job for synchronous retry/apply endpoints and tests."""
+    job = connection.execute(
+        "SELECT id,kind,status,payload FROM app_jobs WHERE id=%s FOR UPDATE", (job_id,)
+    ).fetchone()
+    if job is None:
+        return None
+    if job["status"] == "done":
+        return "done"
+    return handle_job(connection, job)
+
 
 if __name__ == "__main__":
     while True:

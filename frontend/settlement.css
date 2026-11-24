@@ -1,4 +1,10 @@
 .rental-ledger{display:grid;grid-template-columns:1fr 1.35fr;gap:1.25rem}
 .rental-ledger article{margin-bottom:.7rem;border-left:5px solid var(--s-accent)}
 .rental-hours{display:grid;grid-template-columns:1fr 1fr;gap:.4rem}
+.paused-ticket{border-left-color:#b45309!important;background:#fff7ed}
+.pause-note{color:#92400e;font-weight:600}
+.weather-basis{margin:.65rem 0;padding:.55rem .7rem;background:#f8fafc;border:1px solid #dbe4ee;border-radius:.55rem}
+.weather-basis summary{cursor:pointer;font-weight:700}
+.weather-basis .table-scroll{margin-top:.55rem}
+.basis-missing{color:#64748b}
 @media(max-width:720px){.rental-ledger{grid-template-columns:1fr}}

@@ -6,7 +6,9 @@ import {replays,simulate} from './replay_store.js'
 import {bands} from './heat_bands.js'
 export async function render(root,session){
  const [list,board]=await Promise.all([replays(),venues()])
+ const active=(board.active_corrections||[]).filter(b=>b.status!=='published')
  root.innerHTML=heading('替场回放','以演前两段气温与湿度匹配过去日期，再回放各半小时的相似日分位。')+`
+ ${active.length?`<p class="correction-banner" role="status">有 ${active.length} 个气象订正批次排队/处理中；本页继续显示旧版，全部重算成功后一次性切换。</p>`:''}
  <div class="replay-board">${canEdit(session)?`<form class="panel compact-form"><h2>选择历史演次</h2><label>预留单<select name="hold">${choices(board.holds.filter(x=>x.state==='held'),x=>x.title)}</select></label>
  <label>相似日期数<input name="neighbors" type="number" value="3" min="2" max="10" required></label>
  <label>分位数<input name="percentile" type="number" value=".8" min=".5" max=".99" step=".01" required></label><button>重放下半场</button>${feedback}</form>`:''}

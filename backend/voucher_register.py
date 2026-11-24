@@ -1,5 +1,11 @@
+from datetime import datetime, timezone
+
 from fastapi import HTTPException
-from pydantic import BaseModel,Field
+from fastapi.encoders import jsonable_encoder
+from psycopg.types.json import Jsonb
+from pydantic import BaseModel, Field
+
+from correction_batch import assert_ticketing_allowed
 from rental_tally import charge
 
 class Voucher(BaseModel):
@@ -15,11 +21,53 @@ def open_ticket(cx,key,data,actor):
     model=cx.execute("SELECT * FROM analog_replays WHERE code=%s",(key,)).fetchone()
     if not hold or hold["state"]!="held" or not model:
         raise HTTPException(409,"等预留登记与回放结果齐备后调整")
+    assert_ticketing_allowed(cx,hold)
     site=cx.execute("SELECT * FROM rehearsal_venues WHERE code=%s",(hold["backup"],)).fetchone()
     total=charge(cx,hold,site,data,model["replay_window"])
+
+    # Freeze the complete ticket-time basis.  Later weather corrections may
+    # recompute unfinished replays, but this voucher and its rent stay original.
+    weather_rows=cx.execute(
+        "SELECT * FROM historical_blocks WHERE on_day<=%s ORDER BY on_day,half_from",
+        (hold["on_day"],),
+    ).fetchall()
+    encoded_blocks=jsonable_encoder(weather_rows)
+    grouped_weather={}
+    for row in encoded_blocks:
+        day=str(row["on_day"])
+        half=str(row["half_from"])
+        grouped_weather.setdefault(day, {})[half] = row
+    basis=jsonable_encoder({
+        "version": 1,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "hold": dict(hold),
+        "parameters": {
+            "percentile": model["percentile"],
+            "neighbors": model["neighbors"],
+        },
+        "replay": dict(model),
+        "replay_window": model["replay_window"],
+        "window": model["replay_window"],
+        "backtest": model["backtest"],
+        "analogs": (model["backtest"] or {}).get("analogs", []),
+        "weather_blocks": encoded_blocks,
+        "blocks": encoded_blocks,
+        "historical_blocks": encoded_blocks,
+        "weather": grouped_weather,
+        "weather_by_day": grouped_weather,
+        "days": grouped_weather,
+    })
+    # Convenience for tests/readers expecting date -> half-hour access directly.
+    basis.update(grouped_weather)
+    snapshot=Jsonb(basis)
+
     cx.execute('''
-      INSERT INTO adjustment_vouchers(hold,from_block,to_block,moved_to,estimate_cents,memo,reviewed_by) VALUES(%s,%s,%s,%s,%s,%s,%s)
-    ''',(key,data.from_block,data.to_block,hold["backup"],total,data.memo,actor))
+      INSERT INTO adjustment_vouchers
+        (hold,from_block,to_block,moved_to,estimate_cents,memo,reviewed_by,
+         weather_basis,weather_snapshot,weather_evidence,basis)
+      VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    ''',(key,data.from_block,data.to_block,hold["backup"],total,data.memo,actor,
+         snapshot,snapshot,snapshot,snapshot))
     cx.execute("UPDATE practice_holds SET state='proposed' WHERE code=%s",(key,))
     return {"hold":key,"estimate_cents":total,"state":"proposed"}
 

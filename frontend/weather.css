@@ -1,3 +1,9 @@
 .weather-evidence{display:grid;grid-template-columns:2fr minmax(14rem,1fr);gap:1.3rem;align-items:start}
 .weather-evidence summary{padding:.4rem 0;color:var(--s-accent);cursor:pointer;border-bottom:1px dashed var(--s-line)}
+.correction-queue{margin-bottom:1rem}
+.correction-batch{padding:.65rem 0;border-bottom:1px solid var(--s-line)}
+.correction-batch:last-child{border-bottom:0}
+.error-text{color:#b91c1c;font-weight:600}
+.form-help{color:#64748b;font-size:.92rem}
+.correction-banner{margin:.6rem 0;padding:.7rem .9rem;border:1px solid #f0b429;background:#fff7ed;color:#92400e;border-radius:.6rem;font-weight:600}
 @media(max-width:830px){.weather-evidence{grid-template-columns:1fr}}
