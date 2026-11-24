@@ -1,0 +1,4 @@
+.rental-ledger{display:grid;grid-template-columns:1fr 1.35fr;gap:1.25rem}
+.rental-ledger article{margin-bottom:.7rem;border-left:5px solid var(--s-accent)}
+.rental-hours{display:grid;grid-template-columns:1fr 1fr;gap:.4rem}
+@media(max-width:720px){.rental-ledger{grid-template-columns:1fr}}

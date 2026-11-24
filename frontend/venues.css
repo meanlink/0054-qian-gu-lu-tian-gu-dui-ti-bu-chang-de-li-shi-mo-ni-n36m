@@ -1,0 +1,6 @@
+.site-ledger{display:grid;grid-template-columns:1.6fr 1fr;gap:1.2rem;align-items:start}
+.site-ledger article{padding:.5rem 0 .8rem;border-bottom:1px dashed var(--s-line)}
+.hold-ruler{height:.5rem;background:var(--s-line);position:relative;max-width:38rem}
+.hold-ruler span{position:absolute;inset-inline-start:var(--start);width:var(--width);height:100%;background:var(--s-accent)}
+.venue-stock{border-top:1px solid var(--s-line);padding:.7rem 0}
+@media(max-width:725px){.site-ledger{grid-template-columns:1fr}}
